@@ -292,10 +292,11 @@
     </section>
 
     <form id="medForm">
+      <input type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden" />
       <section class="card">
         <div class="q-number">1</div>
         <h2 class="question-title">Ваши ФИО</h2>
-        <input type="text" name="fio" placeholder="Иванов Иван Иванович" autocomplete="name" required />
+        <input type="text" name="fio" maxlength="120" placeholder="Иванов Иван Иванович" autocomplete="name" required />
       </section>
 
       <section class="card">
@@ -314,11 +315,11 @@
           </label>
           <label class="field">
             <span class="field-label">Факультет</span>
-            <input type="text" name="faculty" placeholder="Название факультета" required />
+            <input type="text" name="faculty" maxlength="120" placeholder="Название факультета" required />
           </label>
           <label class="field">
             <span class="field-label">Группа</span>
-            <input type="text" name="group" placeholder="Например, 301" required />
+            <input type="text" name="group" maxlength="50" placeholder="Например, 301" required />
           </label>
         </div>
       </section>
@@ -330,15 +331,15 @@
         <div class="grid-3">
           <label class="field">
             <span class="field-label">Рост, см</span>
-            <input type="number" name="height" min="100" max="250" inputmode="numeric" placeholder="170" />
+            <input type="number" name="height" min="120" max="230" inputmode="numeric" placeholder="170" />
           </label>
           <label class="field">
             <span class="field-label">Вес, кг</span>
-            <input type="number" name="weight" min="25" max="300" step="0.1" inputmode="decimal" placeholder="65" />
+            <input type="number" name="weight" min="30" max="250" step="0.1" inputmode="decimal" placeholder="65" />
           </label>
           <label class="field">
             <span class="field-label">Обхват талии, см</span>
-            <input type="number" name="waist" min="40" max="250" inputmode="numeric" placeholder="80" />
+            <input type="number" name="waist" min="40" max="200" inputmode="numeric" placeholder="80" />
           </label>
         </div>
 </section>
@@ -447,7 +448,7 @@
           </label>
 
           <div class="other-field" id="otherConditionField">
-            <textarea name="condition_other" placeholder="Укажите заболевание или состояние"></textarea>
+            <textarea name="condition_other" maxlength="300" placeholder="Укажите заболевание или состояние"></textarea>
           </div>
         </div>
       </section>
@@ -490,18 +491,30 @@
     </form>
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
   <script>
     const form = document.getElementById('medForm');
     const otherCondition = document.getElementById('otherCondition');
     const otherConditionField = document.getElementById('otherConditionField');
+
     const submitBtn = document.getElementById('submitBtn');
+    const birthdateInput = form.elements.birthdate;
     const metricInputs = ['height', 'weight', 'waist'].map(name => form.elements[name]);
     const conditionCheckboxes = [...document.querySelectorAll('input[name="conditions"]')];
     const cfg = window.MEDCHECK_CONFIG || {};
     const connected = Boolean(cfg.supabaseUrl && cfg.supabaseKey);
-    const db = connected ? supabase.createClient(cfg.supabaseUrl, cfg.supabaseKey) : null;
+
+    function isoDate(d) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+    const now = new Date();
+    const minBirth = new Date(now.getFullYear() - 100, now.getMonth(), now.getDate());
+    const maxBirth = new Date(now.getFullYear() - 14, now.getMonth(), now.getDate());
+    birthdateInput.min = isoDate(minBirth);
+    birthdateInput.max = isoDate(maxBirth);
 
     otherCondition.addEventListener('change', () => {
       otherConditionField.classList.toggle('show', otherCondition.checked);
@@ -518,17 +531,29 @@ conditionCheckboxes.forEach(box => {
       });
     });
 
+    function explainError(status, code) {
+      if (status === 429 || code === 'rate_limited') return 'Слишком много анкет отправлено с этого устройства/сети за короткое время. Подождите несколько минут и попробуйте снова.';
+      if (code === 'invalid_birthdate') return 'Проверьте дату рождения.';
+      if (code && code.startsWith('invalid_')) return 'Проверьте правильность заполнения анкеты.';
+      return 'Не удалось отправить анкету. Проверьте подключение к интернету и попробуйте ещё раз.';
+    }
+
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
+      if (!form.reportValidity()) return;
+
       const selectedConditions = conditionCheckboxes.filter(x => x.checked).map(x => x.value);
       if (!selectedConditions.length) {
         alert('Пожалуйста, выберите вариант в разделе «Хронические заболевания».');
         return;
       }
+      if (otherCondition.checked && !form.elements.condition_other.value.trim()) {
+        alert('Пожалуйста, заполните поле «Свой вариант».');
+        form.elements.condition_other.focus();
+        return;
+      }
 
       const payload = {
-        id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
-        created_at: new Date().toISOString(),
         fio: form.elements.fio.value.trim(),
         birthdate: form.elements.birthdate.value,
         course: Number(form.elements.course.value),
@@ -541,36 +566,39 @@ conditionCheckboxes.forEach(box => {
         conditions: selectedConditions,
         condition_other: otherCondition.checked ? form.elements.condition_other.value.trim() || null : null,
         pe_group: form.elements.pe_group.value,
-        reviewed: false,
-        reviewed_at: null,
-        doctor_note: null
+        website: form.elements.website.value
       };
 
       submitBtn.disabled = true;
       submitBtn.textContent = 'Отправляем…';
       try {
         if (connected) {
-          const dbPayload = {...payload};
-          delete dbPayload.id;
-          delete dbPayload.created_at;
-          delete dbPayload.reviewed;
-          delete dbPayload.reviewed_at;
-          delete dbPayload.doctor_note;
-          const { error } = await db.from('medical_questionnaires').insert(dbPayload);
-          if (error) throw error;
+          const functionName = cfg.submitFunction || 'submit-medcheck';
+          const response = await fetch(`${cfg.supabaseUrl}/functions/v1/${functionName}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': cfg.supabaseKey
+            },
+            body: JSON.stringify(payload)
+          });
+          let result = {};
+          try { result = await response.json(); } catch (_) {}
+          if (!response.ok) throw { status: response.status, code: result.error };
         } else {
           const demo = JSON.parse(localStorage.getItem('medcheck_demo') || '[]');
-          demo.unshift(payload);
+          demo.unshift({ ...payload, id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()), created_at: new Date().toISOString(), reviewed: false, reviewed_at: null, doctor_note: null });
           localStorage.setItem('medcheck_demo', JSON.stringify(demo));
         }
         const success = document.getElementById('successMessage');
         success.classList.add('show');
         form.reset();
         otherConditionField.classList.remove('show');
+        
         success.scrollIntoView({ behavior: 'smooth', block: 'center' });
       } catch (err) {
         console.error(err);
-        alert('Не удалось отправить анкету. Проверьте подключение к интернету и попробуйте ещё раз.');
+        alert(explainError(err.status, err.code));
       } finally {
         submitBtn.disabled = false;
         submitBtn.textContent = 'Отправить анкету';
