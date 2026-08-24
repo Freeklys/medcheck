@@ -342,13 +342,7 @@
             <input type="number" name="waist" min="40" max="200" inputmode="numeric" placeholder="80" />
           </label>
         </div>
-        <label class="option" style="margin-top:12px;">
-          <input type="checkbox" id="dontKnowMetrics" />
-          <span>
-            <span class="option-title">Затрудняюсь ответить</span>
-          </span>
-        </label>
-      </section>
+     </section>
 
       <section class="card">
         <div class="q-number">5</div>
@@ -502,7 +496,6 @@
     const form = document.getElementById('medForm');
     const otherCondition = document.getElementById('otherCondition');
     const otherConditionField = document.getElementById('otherConditionField');
-    const dontKnowMetrics = document.getElementById('dontKnowMetrics');
     const submitBtn = document.getElementById('submitBtn');
     const birthdateInput = form.elements.birthdate;
     const metricInputs = ['height', 'weight', 'waist'].map(name => form.elements[name]);
@@ -526,12 +519,7 @@
       otherConditionField.classList.toggle('show', otherCondition.checked);
     });
 
-    dontKnowMetrics.addEventListener('change', () => {
-      metricInputs.forEach(input => {
-        input.disabled = dontKnowMetrics.checked;
-        if (dontKnowMetrics.checked) input.value = '';
-      });
-    });
+    
 
     conditionCheckboxes.forEach(box => {
       box.addEventListener('change', () => {
@@ -573,10 +561,6 @@
         course: Number(form.elements.course.value),
         faculty: form.elements.faculty.value.trim(),
         student_group: form.elements.group.value.trim(),
-        height_cm: dontKnowMetrics.checked || !form.elements.height.value ? null : Number(form.elements.height.value),
-        weight_kg: dontKnowMetrics.checked || !form.elements.weight.value ? null : Number(form.elements.weight.value),
-        waist_cm: dontKnowMetrics.checked || !form.elements.waist.value ? null : Number(form.elements.waist.value),
-        metrics_unknown: dontKnowMetrics.checked,
         conditions: selectedConditions,
         condition_other: otherCondition.checked ? form.elements.condition_other.value.trim() || null : null,
         pe_group: form.elements.pe_group.value,
