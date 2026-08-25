@@ -234,6 +234,8 @@
         if(!$('#editFio').value.trim()){alert('ФИО не может быть пустым.');return}
         if(!conditions.length){alert('Выберите хотя бы один вариант в разделе заболеваний.');return}
         const numOrNull=id=>$('#'+id).value===''?null:Number($('#'+id).value);
+        const otherText=$('#editOther').value.trim();
+        if(otherText && !conditions.includes('Другое')) conditions.push('Другое');
         const patch={
           fio:$('#editFio').value.trim(),
           birthdate:$('#editBirthdate').value||null,
@@ -245,7 +247,7 @@
           waist_cm:numOrNull('editWaist'),
           metrics_unknown:false,
           conditions,
-          condition_other:$('#editOther').value.trim()||null,
+          condition_other:otherText||null,
           pe_group:$('#editPe').value
         };
         await savePatient(patch);
