@@ -83,6 +83,7 @@
 <th>Дата рождения</th>
 <th>Обучение</th>
 <th>Антропометрия</th>
+<th>ИМТ и степень</th>
 <th>Хронические заболевания</th>
 <th>Группа физкультуры</th>
 <th>Статус</th>
@@ -159,6 +160,17 @@
       const v=r[key];
       return v!==null&&v!==undefined&&v!==''?esc(v)+suffix:'<span class="sub">Не указано</span>';
     }
+    function bmiInfo(height, weight){
+      const h=Number(height), w=Number(weight);
+      if(!Number.isFinite(h)||!Number.isFinite(w)||h<=0||w<=0||h<50||h>250||w<10||w>500)return null;
+      const bmi=w/Math.pow(h/100,2);
+      const degree=bmi<18.5?'Дефицит (недостаточная масса тела)':bmi<25?'Нормальная масса тела':bmi<30?'Избыточная масса тела (предожирение)':bmi<35?'Ожирение I степени':bmi<40?'Ожирение II степени':'Ожирение III степени';
+      return {value:bmi.toFixed(1).replace('.',','),degree};
+    }
+    function bmiHtml(r){
+      const bmi=bmiInfo(r.height_cm,r.weight_kg);
+      return bmi?`<div class="cell-stack"><div class="cell-main"><b>${bmi.value}</b> кг/м²</div><div class="cell-muted">${esc(bmi.degree)}</div></div>`:'<span class="sub">Нет данных</span>';
+    }
     function render(){
       const list=filtered();
       $('#rows').innerHTML=list.map(r=>{
@@ -181,6 +193,7 @@
             </div>
           </td>
           <td>${anthrop}</td>
+          <td>${bmiHtml(r)}</td>
           <td class="diseases-cell"><div>${esc(diseases)}</div>${other}</td>
           <td>${esc(r.pe_group||'—')}</td>
           <td>${r.reviewed?'<span class="badge good">Осмотрено</span>':'<span class="badge">Ожидает осмотра</span>'}</td>
@@ -216,6 +229,7 @@
           <div class="edit-field"><label>Группа</label><input id="editGroup" value="${esc(current.student_group||'')}"></div>
           <div class="edit-field"><label>Рост, см</label><input id="editHeight" type="number" min="100" max="250" value="${current.height_cm??''}"></div>
           <div class="edit-field"><label>Вес, кг</label><input id="editWeight" type="number" min="25" max="300" step="0.1" value="${current.weight_kg??''}"></div>
+          <div class="edit-field full" id="editBmiPreview"><label>ИМТ и степень (автоматически)</label><div id="bmiPreviewValue">${bmiHtml(current)}</div></div>
           <div class="edit-field"><label>Талия, см</label><input id="editWaist" type="number" min="40" max="250" value="${current.waist_cm??''}"></div>
           <div class="edit-field"><label>Группа физкультуры</label><select id="editPe">${pe}</select></div>
           <div class="edit-field full"><label>Хронические заболевания</label><div class="edit-conditions">${checks}</div></div>
@@ -224,6 +238,8 @@
         <div class="drawer-actions"><button id="saveQuestionnaire" class="btn btn-primary">Сохранить изменения</button></div>
       </section>
       <section class="section"><div class="section-title">Заметка врача</div><textarea id="doctorNote" class="note" placeholder="Добавьте заметку по осмотру…">${esc(current.doctor_note||'')}</textarea><div class="drawer-actions"><button id="saveNote" class="btn btn-primary">Сохранить заметку</button><button id="reviewBtn" class="btn ${current.reviewed?'btn-ghost':'btn-primary'}">${current.reviewed?'Снять отметку «осмотрено»':'Отметить как осмотрено'}</button><button id="deleteBtn" class="btn btn-danger">Удалить анкету</button></div></section>`;
+      const updateBmiPreview=()=>{const b=bmiInfo($('#editHeight').value,$('#editWeight').value);$('#bmiPreviewValue').textContent=b?`${b.value} кг/м² — ${b.degree}`:'Нет данных для расчёта';};
+      ['editHeight','editWeight'].forEach(id=>$('#'+id).addEventListener('input',updateBmiPreview));
       $('#drawerBg').classList.remove('hidden');
       document.querySelectorAll('input[name="editCondition"]').forEach(box=>box.onchange=()=>{
         if(box.value==='Нет'&&box.checked)document.querySelectorAll('input[name="editCondition"]').forEach(x=>{if(x!==box)x.checked=false});
@@ -260,7 +276,7 @@
     async function deletePatient(){if(!current)return;const patientName=current.fio||'эту анкету';if(!confirm(`Удалить анкету «${patientName}»?\n\nЭто действие нельзя отменить.`))return;const id=current.id;if(connected){const {error}=await db.from('medical_questionnaires').delete().eq('id',id);if(error){alert('Не удалось удалить анкету: '+error.message);return}}else{records=records.filter(r=>String(r.id)!==String(id));localStorage.setItem('medcheck_demo',JSON.stringify(records))}records=records.filter(r=>String(r.id)!==String(id));current=null;$('#drawerBg').classList.add('hidden');buildCourseFilter();render();}
     $('#closeDrawer').onclick=()=>$('#drawerBg').classList.add('hidden');$('#drawerBg').addEventListener('click',e=>{if(e.target===$('#drawerBg'))$('#drawerBg').classList.add('hidden')});
     function csvCell(v){let s=String(v??'');if(/^[=+\-@\t\r\n]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"'}
-    $('#exportBtn').onclick=()=>{const cols=['ФИО','Дата рождения','Курс','Факультет','Группа','Рост','Вес','Талия','Заболевания','Свой вариант','Группа физкультуры','Осмотрено','Дата заполнения'];const rows=filtered().map(r=>[r.fio,r.birthdate,r.course,r.faculty,r.student_group,r.height_cm??'',r.weight_kg??'',r.waist_cm??'',(r.conditions||[]).join('; '),r.condition_other||'',r.pe_group,r.reviewed?'Да':'Нет',r.created_at]);const csv='\ufeff'+[cols,...rows].map(row=>row.map(csvCell).join(';')).join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download='medcheck-'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(a.href)};
+    $('#exportBtn').onclick=()=>{const cols=['ФИО','Дата рождения','Курс','Факультет','Группа','Рост','Вес','ИМТ','Степень ИМТ','Талия','Заболевания','Свой вариант','Группа физкультуры','Осмотрено','Дата заполнения'];const rows=filtered().map(r=>[r.fio,r.birthdate,r.course,r.faculty,r.student_group,r.height_cm??'',r.weight_kg??'',bmiInfo(r.height_cm,r.weight_kg)?.value??'',bmiInfo(r.height_cm,r.weight_kg)?.degree??'',r.waist_cm??'',(r.conditions||[]).join('; '),r.condition_other||'',r.pe_group,r.reviewed?'Да':'Нет',r.created_at]);const csv='\ufeff'+[cols,...rows].map(row=>row.map(csvCell).join(';')).join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download='medcheck-'+new Date().toISOString().slice(0,10)+'.csv';a.click();URL.revokeObjectURL(a.href)};
     init();
   </script>
 </body>
